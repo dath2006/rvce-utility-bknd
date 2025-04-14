@@ -36,7 +36,10 @@ const userSchema = new mongoose.Schema({
   },
   attendance: [
     {
-      date: String,
+      date: {
+        type: String,
+        unique: true,
+      },
       dayTimeTable: [
         {
           type: Object,

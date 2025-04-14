@@ -115,7 +115,7 @@ export async function initDay(data: InitDay) {
     if (prevTimeTable) {
       return {
         success: true,
-        dayTable: JSON.stringify(prevTimeTable),
+        dayTable: JSON.stringify(prevTimeTable.dayTimeTable),
         courses,
         accStart: user.courseStart,
         accEnd: user.courseEnd,
