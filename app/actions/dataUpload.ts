@@ -107,6 +107,21 @@ export async function initDay(data: InitDay) {
 
     const day = new Date(data.date).toDateString().split(" ")[0].toUpperCase();
     const courses = timeTable.toObject().courses;
+
+    // Check for duplicate date if found return it
+    const dateString = new Date(data.date).toDateString();
+    const prevTimeTable =
+      user.attendance.find((el: any) => el.date === dateString) || null;
+    if (prevTimeTable) {
+      return {
+        success: true,
+        dayTable: JSON.stringify(prevTimeTable),
+        courses,
+        accStart: user.courseStart,
+        accEnd: user.courseEnd,
+      };
+    }
+
     const dayTable = timeTable.events
       .filter((e: any) => e.day === day)
       .map((e: any) => {
@@ -120,7 +135,6 @@ export async function initDay(data: InitDay) {
         };
       });
 
-    const dateString = new Date(data.date).toDateString();
     if (!user.attendance.some((el: any) => el.date === dateString)) {
       user.attendance.push({
         date: dateString,
