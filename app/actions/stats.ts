@@ -353,21 +353,52 @@ const getClassCount = (
     throw new Error("Present and absent counts cannot be negative");
   }
 
-  if (present + absent === 0) {
+  const totalClassesHeld = present + absent;
+
+  if (totalClassesHeld === 0) {
     return { requiredPresent: 0, allowedAbsent: 0 };
   }
 
-  const totalClasses = present + absent;
-  const requiredPresent = Math.ceil((minAtt * totalClasses) / 100);
+  // Calculate required present classes to meet minimum attendance
+  let requiredPresent = 0;
+  let allowedAbsent = 0;
 
-  if (present < requiredPresent) {
-    return {
-      requiredPresent: requiredPresent - present,
-    };
+  const currentAttendancePercentage = (present / totalClassesHeld) * 100;
+
+  if (currentAttendancePercentage < minAtt) {
+    // If current attendance is below the requirement
+    // We need to solve: (present + x) / (totalClassesHeld + x) >= minAtt/100
+    // This simplifies to: x >= (minAtt*totalClassesHeld - 100*present) / (100 - minAtt)
+
+    if (minAtt === 100) {
+      // If 100% attendance is required, student needs to attend all absences plus one
+      requiredPresent = absent + 1;
+      allowedAbsent = 0;
+    } else {
+      const additionalRequired = Math.ceil(
+        (minAtt * totalClassesHeld - 100 * present) / (100 - minAtt)
+      );
+      requiredPresent = additionalRequired;
+      allowedAbsent = 0;
+    }
   } else {
-    const maxAbsent = Math.floor((totalClasses * (100 - minAtt)) / 100);
-    return {
-      allowedAbsent: maxAbsent - absent,
-    };
+    // If current attendance is already meeting the requirement
+    // Calculate how many more classes can be missed while maintaining minimum attendance
+    // Let's say the student can afford to miss x more classes.
+    // We solve: present / (totalClassesHeld + x) >= minAtt/100
+    // This simplifies to: x <= (present * 100 / minAtt) - totalClassesHeld
+
+    if (minAtt === 0) {
+      requiredPresent = 0;
+      allowedAbsent = Number.POSITIVE_INFINITY; // Can miss infinite classes if 0% attendance is required
+    } else {
+      requiredPresent = 0;
+      const maxAbsences = Math.floor(
+        (present * 100) / minAtt - totalClassesHeld
+      );
+      allowedAbsent = maxAbsences;
+    }
   }
+
+  return { requiredPresent, allowedAbsent };
 };
