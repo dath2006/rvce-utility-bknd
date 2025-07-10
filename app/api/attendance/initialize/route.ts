@@ -27,6 +27,17 @@ async function connectDB() {
   }
 }
 
+// Utility function to convert a date to IST and set time to 00:00:00
+function toISTMidnight(date: Date | string): Date {
+  const d = typeof date === "string" ? new Date(date) : new Date(date);
+  // Convert to IST
+  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+  const ist = new Date(utc + 5.5 * 60 * 60 * 1000);
+  // Set time to 00:00:00
+  ist.setHours(0, 0, 0, 0);
+  return ist;
+}
+
 export async function POST(request: Request) {
   await connectDB();
   try {
@@ -66,8 +77,8 @@ export async function POST(request: Request) {
       }
     }
 
-    const istOffset = 5.5 * 60 * 60 * 1000;
-    const now = new Date(Date.now() + istOffset);
+    // Use IST midnight for 'now'
+    const now = toISTMidnight(new Date());
     const attendance = await Attendance.findOne({
       class: user.branch + user.section,
     }).populate("timeTable");
@@ -90,7 +101,7 @@ export async function POST(request: Request) {
     const daySchedules = getDaySchedules(user.courseStart, now);
     const attendanceRecords = daySchedules.flatMap((schedule: any) =>
       schedule.dates.map((date: any) => ({
-        date,
+        date: toISTMidnight(date),
         dayTimeTable: attendance.timeTable.events
           .filter((event: any) => event.day === schedule.day)
           .map((event: any) => {

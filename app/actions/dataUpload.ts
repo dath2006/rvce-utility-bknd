@@ -105,6 +105,41 @@ export async function initDay(data: InitDay) {
       throw new Error("Timetable not found");
     }
 
+    // Compare only the day (not time), in IST
+    const dataDateIST = new Date(
+      new Date(data.date).toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+    );
+    const courseEndIST = new Date(
+      new Date(user.courseEnd).toLocaleString("en-US", {
+        timeZone: "Asia/Kolkata",
+      })
+    );
+    // Set time to 00:00:00 for both dates to compare only the day
+    dataDateIST.setHours(0, 0, 0, 0);
+    courseEndIST.setHours(0, 0, 0, 0);
+
+    if (dataDateIST > courseEndIST) {
+      return {
+        success: true,
+        dayTable: JSON.stringify(
+          user.attendance.find(
+            (el: any) => el.date === new Date(user.courseEnd).toDateString()
+          )?.dayTimeTable
+        ),
+        courses: timeTable.toObject().courses,
+        accStart: user.courseStart,
+        accEnd: user.courseEnd,
+      };
+    }
+
+    if (dataDateIST < user.courseStart) {
+      return {
+        success: true,
+        dayTable: JSON.stringify([]),
+        courses: timeTable.toObject().courses,
+      };
+    }
+
     const day = new Date(data.date).toDateString().split(" ")[0].toUpperCase();
     const courses = timeTable.toObject().courses;
 
