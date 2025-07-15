@@ -1,12 +1,7 @@
 import { google } from "googleapis";
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs/promises";
-import fst from "fs";
-import * as path from "path";
-import os from "os";
-import { writeFile } from "fs/promises";
-import { mkdir } from "fs/promises";
 import { userUpload } from "@/app/actions/userUpload";
+import { Readable } from "stream";
 
 interface UserProp {
   fullName: string;
@@ -14,78 +9,34 @@ interface UserProp {
   imageUrl: string;
 }
 
-const LOCK_DIR = path.join(os.tmpdir(), "locks");
-
-// Create the lock directory if it doesn't exist
-try {
-  await mkdir(LOCK_DIR, { recursive: true });
-} catch (err) {
-  console.error("Error creating lock directory:", err);
+interface FileProp {
+  fileId: string;
+  fileName: string;
+  docType: string;
+  webViewLink: string;
+  webContentLink: string;
+  description: string;
+  semester: string;
+  branch: string;
+  subjectCode: string;
+  contributedTo: string | null;
 }
-
-// Lock file implementation
-const acquireLock = async (
-  lockName: string,
-  timeout = 10000
-): Promise<boolean> => {
-  const lockFile = path.join(LOCK_DIR, `${lockName}.lock`);
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < timeout) {
-    try {
-      // Try to create the lock file
-      await writeFile(lockFile, String(Date.now()), { flag: "wx" });
-      return true;
-    } catch (err) {
-      // Lock file exists, check if it's stale (older than 30 seconds)
-      try {
-        const stats = await fs.stat(lockFile);
-        if (Date.now() - stats.mtimeMs > 30000) {
-          // Lock is stale, remove it and try again
-          await fs.unlink(lockFile);
-          continue;
-        }
-      } catch (statErr) {
-        // Lock file might have been removed by another process
-      }
-
-      // Wait before retrying
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-  }
-
-  return false;
-};
-
-const releaseLock = async (lockName: string): Promise<void> => {
-  const lockFile = path.join(LOCK_DIR, `${lockName}.lock`);
-  try {
-    await fs.unlink(lockFile);
-  } catch (err) {
-    console.error("Error releasing lock:", err);
-  }
-};
-
-// Helper to safely create or fetch a folder
-const getOrCreateFolder = async (
+// Helper to safely create or fetch a folder with better error handling
+async function getOrCreateFolder(
   drive: any,
   folderName: string,
-  parentId: string,
-  lockName: string
-): Promise<string> => {
-  // Acquire lock for this folder creation
-  const lockAcquired = await acquireLock(lockName);
-  if (!lockAcquired) {
-    throw new Error(`Failed to acquire lock for folder: ${folderName}`);
-  }
-
+  parentId: string
+): Promise<string> {
   try {
     // Check if folder exists
+    const folderQuery = `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and '${parentId}' in parents and trashed=false`;
     const folderList = await drive.files.list({
-      q: `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and '${parentId}' in parents and trashed=false`,
+      q: folderQuery,
       fields: "files(id, name)",
+      spaces: "drive",
     });
 
+    // Return existing folder ID if found
     if (folderList.data.files && folderList.data.files.length > 0) {
       return folderList.data.files[0].id;
     }
@@ -101,107 +52,267 @@ const getOrCreateFolder = async (
     });
 
     return folderResponse.data.id;
-  } finally {
-    // Always release the lock
-    await releaseLock(lockName);
+  } catch (err) {
+    console.error("Folder creation error:", err);
+    throw new Error(
+      `Failed to create or find folder '${folderName}': ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+  }
+}
+
+// Improved authentication function
+const authenticateGoogle = () => {
+  try {
+    // Get credentials from environment variables
+    const privateKey = process.env.GOOGLE_DRIVE_PRIVATE_KEY;
+    const clientEmail = process.env.GOOGLE_DRIVE_CLIENT_EMAIL;
+    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
+
+    // Validate credentials
+    if (!privateKey || !clientEmail) {
+      throw new Error(
+        "Google Drive credentials are missing in environment variables"
+      );
+    }
+
+    // Create proper private key format by replacing escaped newlines
+    // This is often the source of JWT signature errors
+    const formattedKey = privateKey.replace(/\\n/g, "\n");
+
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        type: "service_account",
+        private_key: formattedKey,
+        client_email: clientEmail,
+        client_id: clientId || undefined, // Make client_id optional
+      },
+      scopes: ["https://www.googleapis.com/auth/drive"],
+    });
+
+    return auth;
+  } catch (error) {
+    console.error("Authentication error:", error);
+    throw new Error(
+      `Google authentication failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   }
 };
 
-export async function POST(req: NextRequest) {
-  let tempFilePath = "";
+// Improved file stream processing
+async function streamToBuffer(stream: ReadableStream): Promise<Buffer> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
 
   try {
-    const formData = await req.formData();
-    const subject = formData.get("subject") as string;
-    const semester = formData.get("semester");
-    const branch = formData.get("branch");
-    const file = formData.get("file") as File;
-    const userStr = formData.get("user") as string | null;
-
-    if (!userStr) {
-      return NextResponse.json(
-        { error: "User not logged in" },
-        { status: 401 }
-      );
-    }
-    const user = JSON.parse(userStr) as UserProp;
-
-    if (!file || !(file instanceof File)) {
-      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
     }
 
-    await userUpload(user, subject, file.name);
+    return Buffer.concat(chunks);
+  } finally {
+    reader.releaseLock();
+  }
+}
 
-    // Create temp file
-    const tempDir = os.tmpdir();
-    const randomName = Math.random().toString(36).substring(7);
-    const fileExt = path.extname(file.name);
-    tempFilePath = path.join(tempDir, `${randomName}${fileExt}`);
+// File type validation
+const validateFileType = (file: File): boolean => {
+  const allowedFileTypes = [
+    "application/pdf", // PDF
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // DOCX
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation", // PPTX
+    "text/plain", // TXT
+  ];
 
-    // Write to temp file
-    const bytes = await file.arrayBuffer();
-    await fs.writeFile(tempFilePath, Buffer.from(bytes));
+  // Check if file type is in allowed types
+  if (!allowedFileTypes.includes(file.type)) {
+    // Handle some edge cases where MIME type might not be reliable
+    const extension = file.name.toLowerCase().split(".").pop();
+    if (
+      (extension === "pdf" && file.type === "application/octet-stream") ||
+      (extension === "docx" && file.type === "application/octet-stream") ||
+      (extension === "pptx" && file.type === "application/octet-stream") ||
+      (extension === "txt" && file.type === "application/octet-stream")
+    ) {
+      return true;
+    }
+    return false;
+  }
+  return true;
+};
 
-    // Initialize Google Drive
-    const auth = new google.auth.GoogleAuth({
-      keyFile: path.join(process.cwd(), "credentials.json"),
-      scopes: ["https://www.googleapis.com/auth/drive.file"],
-    });
+// export async function POST(req: NextRequest) {
+//   try {
+//     const formData = await req.formData();
+//     const subjectCode = formData.get("subjectCode") as string;
+//     const semester = formData.get("semester") as string;
+//     const uploadSessionId = formData.get("uploadSessionId") as string;
+//     const branch = formData.get("branch") as string;
+//     const docType = formData.get("docType") as string;
+//     const file = formData.get("file") as File;
+//     const userStr = formData.get("user") as string | null;
+//     const contributedTo = formData.get("contributedTo") as string | null;
 
-    const drive = google.drive({ version: "v3", auth });
+//     // Validate required inputs
+//     if (!subjectCode || !semester || !branch || !docType) {
+//       return NextResponse.json(
+//         {
+//           error:
+//             "Subject code, semester, branch, and document type are required",
+//         },
+//         { status: 400 }
+//       );
+//     }
 
-    // Get or create user folder with locking
-    const userFolderName = `${user.email}/upload`;
-    const userFolderId = await getOrCreateFolder(
-      drive,
-      userFolderName,
-      "1X5LgbRPdPgVSDYFfwQxvZ9oaLqWZZVUO",
-      `user_folder_${user.email}`
-    );
+//     if (!userStr) {
+//       return NextResponse.json(
+//         { error: "User not logged in" },
+//         { status: 401 }
+//       );
+//     }
 
-    // Create subject folder name with semester and branch
-    const subjectFolderName = `${subject}_${semester?.toString()}_${branch}`;
+//     if (!file || !(file instanceof File)) {
+//       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+//     }
 
-    // Get or create subject folder with locking
-    const subjectFolderId = await getOrCreateFolder(
-      drive,
-      subjectFolderName,
-      userFolderId,
-      `subject_folder_${user.email}_${subjectFolderName}`
-    );
+//     // Validate file type
+//     if (!validateFileType(file)) {
+//       const allowedExtensions = [".pdf", ".docx", ".pptx", ".txt"];
+//       return NextResponse.json(
+//         {
+//           error: `Invalid file type. Only ${allowedExtensions.join(
+//             ", "
+//           )} files are allowed.`,
+//         },
+//         { status: 400 }
+//       );
+//     }
 
-    // Upload file to subject folder
-    const response = await drive.files.create({
-      requestBody: {
-        name: file.name,
-        parents: [subjectFolderId],
-      },
-      media: {
-        mimeType: file.type,
-        body: fst.createReadStream(tempFilePath),
-      },
-    });
+//     // Check file size (20MB limit)
+//     const MAX_SIZE = 20 * 1024 * 1024; // 20MB in bytes
+//     if (file.size > MAX_SIZE) {
+//       return NextResponse.json(
+//         { error: `File ${file.name} exceeds 20MB limit` },
+//         { status: 400 }
+//       );
+//     }
 
-    return NextResponse.json({
-      success: true,
-      fileId: response.data.id,
-      fileName: file.name,
-    });
+//     // Parse user information
+//     const user = JSON.parse(userStr) as UserProp;
+
+//     // Initialize Google Drive API with improved error handling
+//     let drive;
+//     try {
+//       const auth = authenticateGoogle();
+//       drive = google.drive({ version: "v3", auth });
+//     } catch (authError) {
+//       console.error("Authentication failed:", authError);
+//       return NextResponse.json(
+//         {
+//           error: "Authentication failed with Google Drive API",
+//           details: String(authError),
+//         },
+//         { status: 500 }
+//       );
+//     }
+
+//     // Root folder ID (consider moving this to environment variables)
+//     const ROOT_FOLDER_ID =
+//       process.env.GOOGLE_ROOT_FOLDER_ID || "1X5LgbRPdPgVSDYFfwQxvZ9oaLqWZZVUO";
+
+//     // Create folder structure: rootFolder/userEmail/subjectCode_semester_branch_docType
+//     const userFolderName = `${user.email}/upload`;
+//     const userFolderId = await getOrCreateFolder(
+//       drive,
+//       userFolderName,
+//       ROOT_FOLDER_ID
+//     );
+
+//     // Include docType in folder structure for better organization
+//     const subjectFolderName = `${subjectCode}_${semester}_${branch}_${docType}`;
+//     const subjectFolderId = await getOrCreateFolder(
+//       drive,
+//       subjectFolderName,
+//       userFolderId
+//     );
+
+//     // Process file upload
+//     const fileBuffer = await streamToBuffer(file.stream());
+
+//     // Upload file to Drive
+//     const response = await drive.files.create({
+//       requestBody: {
+//         name: file.name,
+//         parents: [subjectFolderId],
+//         description: `Document Type: ${docType}, Subject: ${subjectCode}, Semester: ${semester}, Branch: ${branch}, Uploaded by: ${user.email}`,
+//       },
+//       media: {
+//         mimeType: file.type || "application/octet-stream",
+//         body: Readable.from(fileBuffer),
+//       },
+//       fields: "id,name,webViewLink,webContentLink,description",
+//     });
+//     console.log(response.data);
+//     const responseData = {
+//       id: response.data.id,
+//       name: response.data.name,
+//       docType: docType,
+//       webViewLink: response.data.webViewLink,
+//       webContentLink: response.data.webContentLink,
+//       description: response.data.description,
+//       semester: semester,
+//       branch: branch,
+//       subjectCode: subjectCode,
+//       contributedTo: contributedTo,
+//     };
+
+//     // Update user upload record - using subjectCode as the subject parameter
+//     await userUpload(
+//       user,
+//       subjectCode,
+//       uploadSessionId,
+//       responseData as FileProp
+//     );
+
+//     return NextResponse.json({
+//       success: true,
+//       fileId: response.data.id,
+//       fileName: response.data.name,
+//       fileUrl: response.data.webViewLink,
+//       message: "File uploaded successfully!",
+//     });
+//   } catch (error) {
+//     console.error("Upload error:", error);
+//     return NextResponse.json(
+//       {
+//         error: error instanceof Error ? error.message : "Upload failed",
+//         details: error instanceof Error ? error.stack : undefined,
+//       },
+//       { status: 500 }
+//     );
+//   }
+// }
+
+export async function POST(req: NextRequest) {
+  try {
+    const { responseData, subjectName, user, uploadSessionId } =
+      await req.json();
+    await userUpload(user, subjectName, uploadSessionId, responseData);
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Upload error:", error);
+    console.error(error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Upload failed" },
+      {
+        error: error instanceof Error ? error.message : "Upload failed",
+        details: error instanceof Error ? error.stack : undefined,
+      },
       { status: 500 }
     );
-  } finally {
-    // Clean up temp file
-    if (tempFilePath) {
-      try {
-        await fs.unlink(tempFilePath);
-      } catch (err) {
-        console.error("Error cleaning up temp file:", err);
-      }
-    }
   }
 }
 

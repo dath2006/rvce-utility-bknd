@@ -10,6 +10,19 @@ interface UserProp {
   imageUrl: string;
 }
 
+interface FileProp {
+  fileId: string;
+  fileName: string;
+  docType: string;
+  webViewLink: string;
+  webContentLink: string;
+  description: string;
+  semester: string;
+  branch: string;
+  subjectCode: string;
+  contributedTo: string;
+}
+
 // Initialize MongoDB connection
 let isConnected = false;
 
@@ -20,10 +33,19 @@ async function connectDB() {
     if (!process.env.MONGODB_URI) {
       throw new Error("MONGODB_URI environment variable is not defined");
     }
-    await mongoose.connect(process.env.MONGODB_URI);
+
+    const options = {
+      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+      socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+      connectTimeoutMS: 10000, // Give up initial connection after 10s
+    };
+
+    await mongoose.connect(process.env.MONGODB_URI, options);
     isConnected = true;
+    console.log("MongoDB connected successfully");
   } catch (error) {
     console.error("DB Connection Error:", error);
+    isConnected = false; // Reset connection state on error
     throw new Error("Failed to connect to database");
   }
 }
@@ -31,7 +53,8 @@ async function connectDB() {
 export const userUpload = async (
   user: UserProp,
   subject: string,
-  fileName: string
+  uploadSessionId: string,
+  file: FileProp
 ) => {
   // Input validation
   if (!user || !user.email || !user.fullName) {
@@ -42,36 +65,43 @@ export const userUpload = async (
     throw new Error("Invalid subject provided");
   }
 
-  if (!fileName || typeof fileName !== "string") {
-    throw new Error("Invalid file name provided");
+  if (!file || typeof file !== "object") {
+    throw new Error("Invalid file provided");
   }
 
-  await connectDB();
-
   try {
-    const existingUser = await User.findOne({ email: user.email });
-    const contribution = { subject, file: fileName };
+    await connectDB();
+
+    const existingUser = await User.findOne({ email: user.email }).maxTimeMS(
+      5000
+    );
+    const contribution = {
+      subject,
+      uploadSessionId,
+      fileId: file.fileId.toString(),
+      fileName: file.fileName.toString(),
+      docType: file.docType.toString(),
+      webViewLink: file.webViewLink.toString().replace("view", "preview"),
+      webContentLink: file.webContentLink.toString(),
+      description: file.description.toString(),
+      semester: file.semester.toString(),
+      branch: file.branch.toString(),
+      subjectCode: file.subjectCode.toString(),
+      contributedTo: file.contributedTo?.toString() || null,
+      status: "pending",
+      uploadedAt: new Date(),
+    };
 
     if (existingUser) {
-      // Check for duplicate contribution
-      const isDuplicate = existingUser.contribution.some(
-        (cont: any) => cont.subject === subject && cont.file === fileName
-      );
-
-      if (isDuplicate) {
-        throw new Error("Duplicate contribution detected");
-      }
-
-      // Update existing user
       existingUser.contribution.push(contribution);
       await existingUser.save();
     } else {
-      // Create new user
       const newUser = new User({
         name: user.fullName,
         email: user.email,
         imageUrl: user.imageUrl,
         contribution: [contribution],
+        attendance: [],
       });
       await newUser.save();
     }
@@ -79,9 +109,10 @@ export const userUpload = async (
     return { success: true, message: "Contribution recorded successfully" };
   } catch (error) {
     console.error("Error in userUpload:", error);
-    throw error instanceof Error
-      ? error
-      : new Error("Failed to record contribution");
+    if (error instanceof Error) {
+      throw new Error(`Failed to record contribution: ${error.message}`);
+    }
+    throw new Error("Failed to record contribution");
   }
 };
 
