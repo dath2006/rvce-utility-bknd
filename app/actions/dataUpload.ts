@@ -1,8 +1,8 @@
 "use server";
 
 import mongoose from "mongoose";
-import User from "@/models/user";
-import { Attendance, TimeTable } from "@/models/attendance";
+import User from "@/lib/models/user";
+import { Attendance, TimeTable } from "@/lib/models/attendance";
 import { getDaySchedules } from "@/utils/daySchedules";
 
 // Initialize MongoDB connection

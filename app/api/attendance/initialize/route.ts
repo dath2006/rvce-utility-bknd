@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
-import User from "@/models/user";
-import { Attendance, TimeTable } from "@/models/attendance";
+import User from "@/lib/models/user";
+import { Attendance, TimeTable } from "@/lib/models/attendance";
 import { NextResponse } from "next/server";
 import { getDaySchedules } from "@/utils/daySchedules";
 

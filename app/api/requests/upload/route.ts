@@ -2,8 +2,8 @@ import { google } from "googleapis";
 import { NextRequest, NextResponse } from "next/server";
 import { userUpload } from "@/app/actions/userUpload";
 import { Readable } from "stream";
-import Request from "@/models/requests";
-import User from "@/models/user";
+import Request from "@/lib/models/requests";
+import User from "@/lib/models/user";
 import { sendMail } from "@/lib/sendMail";
 
 interface UserProp {
@@ -226,6 +226,7 @@ export async function POST(req: NextRequest) {
             <li><b>Preview Link:</b> <a href="${
               file.webViewLink
             }" target="_blank">View Resource</a></li>
+            <li><b>NOTE:</b> Review the file and Accept it only if it's not available in the portal and it satisfies your request.(You can only accept one file if multiple files are present.)</li>
           </ul>
           <div style="margin: 32px 0 16px 0; text-align: center;">
             <a href="https://rvce-utility.vercel.app" style="background: #2d4a7a; color: #fff; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block;">Accept or Review this File on RVCE Utility</a>
@@ -243,7 +244,7 @@ export async function POST(req: NextRequest) {
         contributedAt
       ).toLocaleString()}\nPreview Link: ${
         file.webViewLink
-      }\n\nYou can accept or review this file at: https://rvce-utility.vercel.app\n\nThank you for using RVCE Utility!\n— The RVCE Utility Team`;
+      }\nNote: Review the file and Accept it only if it's not available in the portal and it satisfies your request.(You can only accept one file if multiple files are present.)\n\nYou can accept or review this file at: https://rvce-utility.vercel.app\n\nThank you for using RVCE Utility!\n— The RVCE Utility Team`;
       await sendMail({
         to: contributedToUser.email,
         subject: "[RVCE Utility] New Resource Uploaded to Your Request",

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import Request from "@/models/requests";
+import Request from "@/lib/models/requests";
 import mongoose from "mongoose";
+import User from "@/lib/models/user";
 
 async function connectDB() {
   try {
@@ -15,7 +16,8 @@ export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
     const email = url.searchParams.get("email");
-    const requests = await Request.find({ user: email });
+    const user = await User.findOne({ email }).populate("requests");
+    const requests = user?.requests || [];
     return NextResponse.json({ success: true, requests });
   } catch (error) {
     console.error("Error fetching requests:", error);

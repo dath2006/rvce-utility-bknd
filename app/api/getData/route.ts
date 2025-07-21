@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import User from "@/models/user";
+import User from "@/lib/models/user";
 import { NextRequest, NextResponse } from "next/server";
 
 // Define types for our data structure

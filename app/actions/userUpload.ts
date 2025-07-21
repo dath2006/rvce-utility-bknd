@@ -1,8 +1,8 @@
 "use server";
 
 import mongoose from "mongoose";
-import User from "@/models/user";
-import Contributors from "@/models/contibutors";
+import User from "@/lib/models/user";
+import Contributors from "@/lib/models/contibutors";
 
 interface UserProp {
   fullName: string;

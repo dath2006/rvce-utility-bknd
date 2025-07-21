@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import Request from "@/models/requests";
+import Request from "@/lib/models/requests";
 import mongoose from "mongoose";
-import User from "@/models/user";
+import User from "@/lib/models/user";
 
 let isConnected = false;
 
@@ -79,6 +79,14 @@ export async function POST(request: NextRequest) {
     if (user) {
       user.requests.push(savedRequest._id);
       await user.save();
+    } else {
+      const newUser = new User({
+        name: body.fullName,
+        email: body.email,
+        imageUrl: body.image,
+        requests: [savedRequest._id],
+      });
+      await newUser.save();
     }
 
     return NextResponse.json(

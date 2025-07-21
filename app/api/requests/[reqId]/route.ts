@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import Request from "@/models/requests";
-import User from "@/models/user";
+import Request from "@/lib/models/requests";
+import User from "@/lib/models/user";
 
 interface RequestBody {
   user: {

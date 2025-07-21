@@ -2,6 +2,7 @@ import { google } from "googleapis";
 import { NextRequest, NextResponse } from "next/server";
 import { userUpload } from "@/app/actions/userUpload";
 import { Readable } from "stream";
+import { sendTelegramNotification } from "@/lib/utils";
 
 interface UserProp {
   fullName: string;
@@ -303,6 +304,15 @@ export async function POST(req: NextRequest) {
     const { responseData, subjectName, user, uploadSessionId } =
       await req.json();
     await userUpload(user, subjectName, uploadSessionId, responseData);
+
+    // Notify after successful upload
+    await sendTelegramNotification({
+      fileName: responseData.fileName,
+      uploader: user.email,
+      url: responseData.webViewLink,
+      comment: "Open Contribution, Need your attention boss!",
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error(error);

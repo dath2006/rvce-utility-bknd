@@ -5,12 +5,23 @@ const contributorSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  resources: {
-    type: Number,
+  email: {
+    type: String,
     required: true,
   },
+  resources: [
+    {
+      fileId: String,
+      fileType: {
+        type: String,
+        required: true,
+        enum: ["Notes", "QP", "Other", "Lab", "Textbook"],
+      },
+    },
+  ],
   github: {
     type: String,
+    default: null,
   },
 });
 

@@ -1,7 +1,7 @@
 "use server";
 
 import mongoose from "mongoose";
-import User from "@/models/user";
+import User from "@/lib/models/user";
 
 // Initialize MongoDB connection
 let isConnected = false;

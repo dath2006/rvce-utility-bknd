@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import Request from "@/models/requests";
-import User from "@/models/user";
+import Request from "@/lib/models/requests";
+import User from "@/lib/models/user";
+import { sendTelegramNotification } from "@/lib/utils";
 
 // Types for better type safety
 interface RequestBody {
@@ -137,6 +138,15 @@ export async function POST(req: NextRequest) {
         { success: false, message: "File not found" },
         { status: 404 }
       );
+    }
+
+    if (action === "approved") {
+      await sendTelegramNotification({
+        fileName: file.fileName,
+        uploader: file.contributedBy,
+        url: file.webViewLink,
+        comment: `Hey Boss! user ${request.user} has accepted the contribution Need your attention ASAP`,
+      });
     }
 
     // Update file status and comment

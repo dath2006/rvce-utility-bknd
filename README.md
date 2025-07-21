@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RVCE Utility Backend
+
+A backend service for RVCE Utility resource management platform. This project provides APIs and utilities for managing, uploading, and organizing college resources using Google Drive, with user authentication and contribution tracking.
+
+## Features
+
+- **Google Drive Integration**: Store and organize files in a structured folder hierarchy using Google Drive API (OAuth2 authentication).
+- **User Authentication**: Secure access to resources and management features using NextAuth.
+- **Contribution Management**: Users can upload, track, and manage their contributions (notes, documents, etc.).
+- **Admin Tools**: Approve, reject, or review user contributions.
+- **Resource Search & Organization**: Search, browse, and manage files and folders efficiently.
+- **Notifications**: Telegram notifications for new uploads and contributions.
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- Google Cloud project with Drive API enabled
+- OAuth2 credentials (Client ID, Client Secret, Refresh Token)
+
+### Environment Variables
+
+Create a `.env` file in the project root with the following:
+
+```
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_REFRESH_TOKEN=your_google_refresh_token
+GOOGLE_ROOT_FOLDER_ID=your_drive_root_folder_id
+NEXTAUTH_SECRET=your_nextauth_secret
+MONGODB_URI=your_mongodb_connection_string
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token (optional)
+TELEGRAM_CHAT_ID=your_telegram_chat_id (optional)
+```
+
+### Installation
+
+```bash
+npm install
+```
+
+### Running the Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to access the app.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Usage
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Drive Manager**: Browse, search, and manage files/folders in Google Drive.
+- **Contribution Manager**: Review, approve, or reject user-submitted resources.
+- **User Uploads**: Authenticated users can upload files, which are organized by subject, semester, and type.
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+- `app/` - Next.js API routes and pages
+- `lib/` - Google Drive integration, database models, utilities
+- `components/` - UI components
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Contributing
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
 
-## Deploy on Vercel
+## License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+[MIT](LICENSE)

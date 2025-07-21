@@ -3,78 +3,50 @@ import { jwtVerify, importJWK } from "jose";
 // Auth0 domain and audience from your Auth0 application
 const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN || "";
 const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || "";
-interface JwtPayload {
-  sub: string;
-  iss: string;
-  aud: string | string[];
-  iat: number;
-  exp: number;
-  [key: string]: any;
-}
+
 export async function validateAuth0Token(req: NextRequest) {
   try {
-    // Get the Authorization header
     const authHeader = req.headers.get("authorization");
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return {
         isValid: false,
         error: "Missing or invalid authorization header",
       };
     }
-
-    // Extract the token
     const token = authHeader.split(" ")[1];
+    if (!token) return { isValid: false, error: "No token provided" };
 
-    if (!token) {
-      return { isValid: false, error: "No token provided" };
-    }
+    // Decode token header to get kid
+    // jose's decodeJwt only decodes payload, so decode header manually
+    const base64Url = token.split(".")[0];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const headerJson = Buffer.from(base64, "base64").toString("utf8");
+    const header = JSON.parse(headerJson) as { kid?: string };
+    const kid = header.kid;
 
-    // Fetch Auth0 JWKS (JSON Web Key Set)
+    // Fetch JWKS
     const jwksResponse = await fetch(
       `https://${AUTH0_DOMAIN}/.well-known/jwks.json`
     );
     const jwks = await jwksResponse.json();
 
-    // Find the signing key in the JWKS
-    const signingKey = jwks.keys[0];
+    // Find the correct signing key
+    const signingKey = jwks.keys.find(
+      (key: { kid?: string }) => key.kid === kid
+    );
+    if (!signingKey) return { isValid: false, error: "Signing key not found" };
 
-    // Create a public key from the JWKS - Fixed: use importJWK directly
     const publicKey = await importJWK(signingKey);
 
-    // Verify the token
     const { payload } = await jwtVerify(token, publicKey, {
       issuer: `https://${AUTH0_DOMAIN}/`,
-      audience: AUTH0_AUDIENCE,
+      audience: [AUTH0_AUDIENCE, `https://${AUTH0_DOMAIN}/userinfo`],
     });
 
-    return { isValid: true, payload: payload as JwtPayload };
+    return { isValid: true, payload };
   } catch (error) {
     console.error("Token validation error:", error);
     return { isValid: false, error: "Invalid token" };
   }
-}
-// Middleware function to protect API routes
-export async function authMiddleware(req: NextRequest) {
-  // Skip auth for non-API routes or allowed paths
-  const path = req.nextUrl.pathname;
-  // Allow public routes to bypass authentication
-  if (!path.startsWith("/api/") || path === "/api/public") {
-    return NextResponse.next();
-  }
-  const result = await validateAuth0Token(req);
-  if (!result.isValid) {
-    return NextResponse.json({ error: result.error }, { status: 401 });
-  }
-  // Add user info to headers for API routes to use
-  // Fixed: Type safety for payload.sub with proper type casting
-  const requestHeaders = new Headers(req.headers);
-  if (result.payload && result.payload.sub) {
-    requestHeaders.set("x-user-id", result.payload.sub);
-  }
-  // Continue to the API route with user info
-  return NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
 }
