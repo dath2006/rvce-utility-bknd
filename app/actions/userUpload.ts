@@ -56,6 +56,8 @@ export const userUpload = async (
   uploadSessionId: string,
   file: FileProp
 ) => {
+  console.log("request data" + file);
+
   // Input validation
   if (!user || !user.email || !user.fullName) {
     throw new Error("Invalid user data provided");
