@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { TimeTable, courseSchema } from "./attendance";
+import "./requests";
 
 const userSchema = new mongoose.Schema({
   name: String,
